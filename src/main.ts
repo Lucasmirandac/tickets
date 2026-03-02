@@ -4,7 +4,6 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { json } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
-import { JsonLoggerService } from './infrastructure/logging/json-logger.service';
 
 declare global {
   namespace Express {
@@ -15,9 +14,7 @@ declare global {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
-  const logger = app.get(JsonLoggerService);
-  app.useLogger(logger);
+  const app = await NestFactory.create(AppModule);
   app.use(
     helmet({
       contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
@@ -52,6 +49,5 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
   const port = process.env.PORT ?? 3000;
   await app.listen(port, '0.0.0.0');
-  logger.log(`Listening on http://0.0.0.0:${port}`, 'Bootstrap');
 }
 bootstrap();

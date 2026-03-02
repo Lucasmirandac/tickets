@@ -20,6 +20,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "migration:run": "npm run build && node -r dotenv/config node_modules/typeorm/cli.js migration:run -d dist/infrastructure/database/data-source.js",
     "migration:revert": "node -r dotenv/config node_modules/typeorm/cli.js migration:revert -d dist/infrastructure/database/data-source.js",
+    "seed:run": "npm run build && node -r dotenv/config dist/infrastructure/database/seed.js",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down"
   },
