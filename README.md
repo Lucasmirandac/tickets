@@ -395,6 +395,12 @@ A API sobe em `http://localhost:3000` (ou na porta definida em `PORT`).
 
 **Resposta (200):** `{ "access_token": "jwt...", "expires_in": "1d" }`.
 
+### Usuário (JWT obrigatório)
+
+| Método | URL | Descrição |
+|--------|-----|-----------|
+| GET | `/users/me` | Retorna o usuário logado: `{ id, email, role }`. |
+
 ### Admin (JWT + role admin)
 
 Todas as rotas abaixo exigem header `Authorization: Bearer <access_token>` e usuário com role `admin`. Se `ADMIN_EMAIL` e `ADMIN_PASSWORD` estiverem definidos no primeiro start, um usuário admin é criado automaticamente.
@@ -408,11 +414,11 @@ Todas as rotas abaixo exigem header `Authorization: Bearer <access_token>` e usu
 | PATCH | `/admin/sessions/:id` | Atualizar sessão |
 | POST | `/admin/sessions/:sessionId/seats` | Criar assentos em lote (body: `{ "seats": [{ "row", "number" }] }`) |
 
-### Reservas
+### Reservas (JWT obrigatório em POST)
 
 | Método | URL | Descrição |
 |--------|-----|-----------|
-| POST | `/reservations` | Reservar um assento (body JSON, rate limited e enfileirado) |
+| POST | `/reservations` | Reservar um assento (requer JWT; o `userId` é obtido do token). Body JSON, rate limited e enfileirado. |
 
 **Body (POST /reservations):**
 
@@ -421,7 +427,6 @@ Todas as rotas abaixo exigem header `Authorization: Bearer <access_token>` e usu
   "eventId": "uuid",
   "sessionId": "uuid",
   "seatId": "uuid",
-  "userId": "uuid",
   "idempotencyKey": "string opcional"
 }
 ```
@@ -447,6 +452,20 @@ Todas as rotas abaixo exigem header `Authorization: Bearer <access_token>` e usu
 ```
 
 Em caso de timeout da fila: **503 Service Unavailable**.
+
+### Checkout (JWT obrigatório)
+
+| Método | URL | Descrição |
+|--------|-----|-----------|
+| POST | `/orders` | Cria pedido a partir dos tokens de reserva. Body: `{ "reservationTokens": string[] }`. Valida que cada reserva existe, está ativa, pertence ao usuário e não expirou. Retorna `{ orderId, total }`. |
+
+### Ingressos (JWT obrigatório)
+
+| Método | URL | Descrição |
+|--------|-----|-----------|
+| GET | `/tickets` | Lista ingressos do usuário logado. |
+| GET | `/tickets/:id` | Detalhe de um ingresso (apenas dono). |
+| GET | `/tickets/:id/qr` | Retorna imagem PNG do QR do ingresso (apenas dono). |
 
 ### Webhook de pagamento
 

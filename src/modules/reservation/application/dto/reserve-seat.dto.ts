@@ -10,9 +10,6 @@ export class ReserveSeatDto {
   @IsUUID()
   seatId: string;
 
-  @IsUUID()
-  userId: string;
-
   @IsOptional()
   @IsString()
   idempotencyKey?: string;

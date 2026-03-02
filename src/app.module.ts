@@ -5,6 +5,8 @@ import { AuthModule } from './modules/auth/auth.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { PaymentModule } from './modules/payment/payment.module';
 import { ReservationModule } from './modules/reservation/reservation.module';
+import { TicketsModule } from './modules/tickets/tickets.module';
+import { UsersModule } from './modules/users/users.module';
 import { InfrastructureModule } from './infrastructure/infrastructure.module';
 
 @Module({
@@ -16,6 +18,8 @@ import { InfrastructureModule } from './infrastructure/infrastructure.module';
     ReservationModule,
     PaymentModule,
     AdminModule,
+    UsersModule,
+    TicketsModule,
   ],
 })
 export class AppModule {}

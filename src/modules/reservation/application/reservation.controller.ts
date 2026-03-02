@@ -12,6 +12,9 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
 import { RESERVATION_QUEUE } from '../../../infrastructure/queue/queue.module';
+import { JwtAuthGuard } from '../../auth/application/guards/jwt-auth.guard';
+import { CurrentUser } from '../../auth/application/decorators/current-user.decorator';
+import type { CurrentUserPayload } from '../../auth/application/decorators/current-user.decorator';
 import { ReserveSeatDto } from './dto/reserve-seat.dto';
 import { ReservationRequest, ReservationResult } from '../domain/reservation-request.interface';
 
@@ -32,13 +35,17 @@ export class ReservationController {
   }
 
   @Post()
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  async reserve(@Body() dto: ReserveSeatDto): Promise<ReservationResult> {
+  async reserve(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: ReserveSeatDto,
+  ): Promise<ReservationResult> {
     const request: ReservationRequest = {
       eventId: dto.eventId,
       sessionId: dto.sessionId,
       seatId: dto.seatId,
-      userId: dto.userId,
+      userId: user.id,
       idempotencyKey: dto.idempotencyKey,
     };
     const job = await this.reservationQueue.add('reserve', request, {

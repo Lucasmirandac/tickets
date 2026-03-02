@@ -5,6 +5,7 @@ import Redis from 'ioredis';
 import { v4 as uuid } from 'uuid';
 import { REDIS_CLIENT } from '../../../infrastructure/redis/redis.module';
 import { SeatRepository } from '../../catalog/infrastructure/seat.repository';
+import { Reservation } from '../domain/reservation.entity';
 import {
   ReservationRequest,
   ReservationResult,
@@ -130,6 +131,29 @@ export class ReservationService {
       sessionId: reservation.sessionId,
     });
     return true;
+  }
+
+  async findById(reservationId: string): Promise<Reservation | null> {
+    return this.reservationRepository.findById(reservationId);
+  }
+
+  /**
+   * Returns the reservation if it exists, is active, belongs to the user and is not expired.
+   */
+  async getActiveReservationByToken(
+    token: string,
+    userId: string,
+  ): Promise<Reservation | null> {
+    const reservation = await this.reservationRepository.findByToken(token);
+    if (
+      !reservation ||
+      reservation.userId !== userId ||
+      reservation.status !== 'active' ||
+      reservation.expiresAt <= new Date()
+    ) {
+      return null;
+    }
+    return reservation;
   }
 
   async confirmReservation(reservationId: string): Promise<boolean> {

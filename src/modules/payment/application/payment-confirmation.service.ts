@@ -3,12 +3,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ReservationService } from '../../reservation/application/reservation.service';
 import { EventPublisherService } from '../../reservation/infrastructure/event-publisher.service';
+import { TicketService } from '../../tickets/application/ticket.service';
 import { Order } from '../domain/order.entity';
 import { PaymentRepository } from '../infrastructure/payment.repository';
 import { OrderRepository } from '../infrastructure/order.repository';
 
 /**
- * Applies payment approval: updates Payment and Order, confirms reservations and seats.
+ * Applies payment approval: updates Payment and Order, confirms reservations and seats, creates tickets.
  */
 @Injectable()
 export class PaymentConfirmationService {
@@ -19,6 +20,7 @@ export class PaymentConfirmationService {
     private readonly orderRepo: Repository<Order>,
     private readonly reservationService: ReservationService,
     private readonly eventPublisher: EventPublisherService,
+    private readonly ticketService: TicketService,
   ) {}
 
   async confirmByGatewayId(gatewayId: string): Promise<boolean> {
@@ -33,6 +35,10 @@ export class PaymentConfirmationService {
     );
     for (const reservationId of reservationIds) {
       await this.reservationService.confirmReservation(reservationId);
+      await this.ticketService.createForReservation(
+        reservationId,
+        payment.orderId,
+      );
       this.eventPublisher.publishPaymentConfirmed({
         reservationId,
         orderId: payment.orderId,
