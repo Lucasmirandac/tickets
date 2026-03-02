@@ -6,6 +6,8 @@ export interface SessionResponseDto {
   eventId: string;
   startsAt: string;
   venue: string;
+  description: string | null;
+  endsAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

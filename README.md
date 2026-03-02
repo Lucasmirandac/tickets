@@ -337,6 +337,10 @@ Copie `.env.example` para `.env` e ajuste:
 | `RESERVATION_TTL_SECONDS` | TTL da reserva no Redis (segundos) | `600` (10 min) |
 | `RESERVATION_LOCK_TTL_MS` | TTL do lock de reserva (ms) | `5000` |
 | `WEBHOOK_PAYMENT_SECRET` | Segredo para assinatura do webhook | (obrigatório em produção) |
+| `JWT_SECRET` | Segredo para assinatura do JWT | (obrigatório em produção) |
+| `JWT_EXPIRES_IN` | Validade do token (ex.: 1d, 7d) | `1d` |
+| `ADMIN_EMAIL` | Email do admin para seed (opcional) | - |
+| `ADMIN_PASSWORD` | Senha do admin para seed (opcional) | - |
 
 ### Criar o banco (se não usar Docker)
 
@@ -382,6 +386,27 @@ A API sobe em `http://localhost:3000` (ou na porta definida em `PORT`).
 | GET | `/catalog/test` | Smoke do módulo Catalog |
 | GET | `/reservations/test` | Smoke do módulo Reservation |
 | GET | `/webhooks/payments/test` | Smoke do módulo Payment (webhooks) |
+
+### Auth
+
+| Método | URL | Descrição |
+|--------|-----|-----------|
+| POST | `/auth/login` | Login (retorna JWT). Body: `{ "email", "password" }`. |
+
+**Resposta (200):** `{ "access_token": "jwt...", "expires_in": "1d" }`.
+
+### Admin (JWT + role admin)
+
+Todas as rotas abaixo exigem header `Authorization: Bearer <access_token>` e usuário com role `admin`. Se `ADMIN_EMAIL` e `ADMIN_PASSWORD` estiverem definidos no primeiro start, um usuário admin é criado automaticamente.
+
+| Método | URL | Descrição |
+|--------|-----|-----------|
+| GET | `/admin/events` | Listar eventos |
+| POST | `/admin/events` | Criar evento (name, slug opcional, description opcional) |
+| PATCH | `/admin/events/:id` | Atualizar evento |
+| POST | `/admin/events/:eventId/sessions` | Criar sessão (startsAt, venue, description opcional, endsAt opcional) |
+| PATCH | `/admin/sessions/:id` | Atualizar sessão |
+| POST | `/admin/sessions/:sessionId/seats` | Criar assentos em lote (body: `{ "seats": [{ "row", "number" }] }`) |
 
 ### Reservas
 

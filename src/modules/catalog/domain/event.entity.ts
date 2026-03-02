@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { Session } from './session.entity';
 
+
 /**
  * Event entity. Represents a show or game that has one or more sessions.
  */
@@ -21,6 +22,9 @@ export class Event {
 
   @Column({ type: 'varchar', length: 255, unique: true })
   slug: string;
+
+  @Column({ type: 'text', nullable: true })
+  description: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

@@ -28,4 +28,12 @@ export default () => ({
   webhook: {
     paymentSecret: process.env.WEBHOOK_PAYMENT_SECRET ?? '',
   },
+  jwt: {
+    secret: process.env.JWT_SECRET ?? 'change-me-in-production',
+    expiresIn: process.env.JWT_EXPIRES_IN ?? '1d',
+  },
+  admin: {
+    seedEmail: process.env.ADMIN_EMAIL ?? '',
+    seedPassword: process.env.ADMIN_PASSWORD ?? '',
+  },
 });

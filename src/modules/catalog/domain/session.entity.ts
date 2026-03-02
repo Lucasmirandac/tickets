@@ -11,6 +11,7 @@ import {
 import { Event } from './event.entity';
 import { Seat } from './seat.entity';
 
+
 /**
  * Session entity. A date/time slot for an event, held at a venue.
  */
@@ -31,6 +32,12 @@ export class Session {
 
   @Column({ type: 'varchar', length: 255 })
   venue: string;
+
+  @Column({ type: 'text', nullable: true })
+  description: string | null;
+
+  @Column({ name: 'ends_at', type: 'timestamp', nullable: true })
+  endsAt: Date | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

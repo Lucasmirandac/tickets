@@ -13,6 +13,7 @@ function toEventResponse(event: Event): EventResponseDto {
     id: event.id,
     name: event.name,
     slug: event.slug,
+    description: event.description ?? null,
     createdAt: event.createdAt.toISOString(),
     updatedAt: event.updatedAt.toISOString(),
   };
@@ -24,6 +25,8 @@ function toSessionResponse(session: Session): SessionResponseDto {
     eventId: session.eventId,
     startsAt: session.startsAt.toISOString(),
     venue: session.venue,
+    description: session.description ?? null,
+    endsAt: session.endsAt ? session.endsAt.toISOString() : null,
     createdAt: session.createdAt.toISOString(),
     updatedAt: session.updatedAt.toISOString(),
   };
