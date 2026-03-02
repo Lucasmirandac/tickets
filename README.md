@@ -20,6 +20,8 @@ Sistema de venda de ingressos preparado para **picos massivos de tráfego (burst
 - [Integração com gateway de pagamento (webhooks)](#integração-com-gateway-de-pagamento-webhooks)
 - [Estrutura do projeto](#estrutura-do-projeto)
 - [Pré-requisitos e configuração](#pré-requisitos-e-configuração)
+  - [Docker Compose](#docker-compose)
+  - [Migrations](#migrations)
 - [API](#api)
 - [Testes](#testes)
 - [Recursos](#recursos)
@@ -282,6 +284,41 @@ src/
 - **PostgreSQL** (ex.: 14+)
 - **Redis** (ex.: 6+)
 
+### Docker Compose
+
+Para subir PostgreSQL e Redis localmente com um único comando:
+
+```bash
+# sobe os serviços em background (postgres na 5432, redis na 6379)
+npm run docker:up
+# ou
+docker compose up -d
+```
+
+O Compose cria o banco `tickets` automaticamente (variável `POSTGRES_DB=tickets`). Se a porta 5432 ou 6379 já estiver em uso, pare o serviço local ou altere o mapeamento em `docker-compose.yml`.
+
+```bash
+# derruba os containers
+npm run docker:down
+```
+
+### Migrations
+
+O schema do banco é controlado por **migrations** TypeORM (o app não usa `synchronize`). Após subir o Postgres (Docker ou local) e criar o banco (se não usou Docker):
+
+```bash
+# compila e aplica todas as migrations pendentes
+npm run migration:run
+```
+
+Para reverter a última migration:
+
+```bash
+npm run migration:revert
+```
+
+Migrations ficam em `src/infrastructure/database/migrations/`. A primeira migration (`InitialSchema`) cria as tabelas: `events`, `sessions`, `seats`, `reservations`, `orders`, `payments`, `order_reservations`.
+
 ### Variáveis de ambiente
 
 Copie `.env.example` para `.env` e ajuste:
@@ -301,7 +338,9 @@ Copie `.env.example` para `.env` e ajuste:
 | `RESERVATION_LOCK_TTL_MS` | TTL do lock de reserva (ms) | `5000` |
 | `WEBHOOK_PAYMENT_SECRET` | Segredo para assinatura do webhook | (obrigatório em produção) |
 
-### Criar o banco
+### Criar o banco (se não usar Docker)
+
+Se estiver usando PostgreSQL local (e não o do Docker Compose), crie o banco:
 
 ```bash
 createdb tickets
