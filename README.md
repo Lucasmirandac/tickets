@@ -1,98 +1,424 @@
+# Sistema de Venda de Ingressos de Alta Disponibilidade
+
 <p align="center">
   <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
 </p>
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Sistema de venda de ingressos preparado para **picos massivos de tráfego (burst traffic)** e **zero overselling** (nunca vender o mesmo assento duas vezes). Arquitetura event-driven em monólito modular NestJS, com locks distribuídos, TTL de reserva e integração com gateway de pagamento via webhooks.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## Índice
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+- [Descrição](#descrição)
+- [Arquitetura](#arquitetura)
+- [Stack e dependências](#stack-e-dependências)
+- [Modelo de dados (ERD)](#modelo-de-dados-erd)
+- [Gestão de concorrência](#gestão-de-concorrência)
+- [Fluxo de checkout e TTL](#fluxo-de-checkout-e-ttl)
+- [Thundering herd e escalabilidade](#thundering-herd-e-escalabilidade)
+- [Integração com gateway de pagamento (webhooks)](#integração-com-gateway-de-pagamento-webhooks)
+- [Estrutura do projeto](#estrutura-do-projeto)
+- [Pré-requisitos e configuração](#pré-requisitos-e-configuração)
+- [API](#api)
+- [Testes](#testes)
+- [Recursos](#recursos)
+- [Licença](#licença)
 
-## Project setup
+---
 
-```bash
-$ npm install
+## Descrição
+
+O sistema cobre:
+
+- **Catálogo**: eventos, sessões e assentos (inventário).
+- **Reserva**: reserva de assento com lock distribuído (Redis), TTL de 10 minutos no Redis e persistência em PostgreSQL com controle de concorrência otimista (OCC).
+- **Checkout**: reserva temporária; se o pagamento não for confirmado no prazo, o assento volta a ficar disponível.
+- **Pagamento**: recebimento de confirmação do gateway via webhook (assinatura HMAC), processamento assíncrono em fila e atualização de reserva/assento para vendido.
+
+Eventos de domínio (`SeatReserved`, `ReservationExpired`, `PaymentConfirmed`) são publicados via EventEmitter2, permitindo evoluir para mensageria externa (Redis Streams, RabbitMQ) e extração para microsserviços no futuro.
+
+---
+
+## Arquitetura
+
+Arquitetura **event-driven** em **monólito modular**, com bounded contexts bem definidos:
+
+| Contexto      | Responsabilidade                                      |
+|---------------|--------------------------------------------------------|
+| **Catalog**   | Eventos, sessões, assentos; repositório de assentos (OCC). |
+| **Reservation** | Reserva com lock + TTL, expiração por cron, confirmação pós-pagamento. |
+| **Payment**   | Webhook do gateway, fila de processamento, confirmação de reservas. |
+
+A comunicação entre contextos é feita por **eventos de domínio** e por **chamadas diretas** aos serviços exportados (ex.: Payment chama Reservation para confirmar). A infraestrutura compartilhada (Redis, PostgreSQL, BullMQ, EventEmitter) fica no `InfrastructureModule`.
+
+---
+
+## Stack e dependências
+
+| Camada              | Tecnologia |
+|---------------------|------------|
+| API / orquestração  | NestJS 11, TypeScript, Express |
+| Persistência        | PostgreSQL, TypeORM |
+| Cache, locks, filas | Redis, BullMQ, ioredis |
+| Eventos             | @nestjs/event-emitter (EventEmitter2) |
+| Validação           | class-validator, class-transformer |
+| Agendamento         | @nestjs/schedule (cron) |
+| Rate limiting       | @nestjs/throttler |
+
+---
+
+## Modelo de dados (ERD)
+
+```mermaid
+erDiagram
+  Event ||--o{ Session : has
+  Session ||--o{ Seat : has
+  Seat ||--o{ Reservation : "reserved_by"
+  Reservation ||--o| Order : "fulfills"
+  Order ||--o{ Payment : has
+
+  Event {
+    uuid id PK
+    string name
+    string slug
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  Session {
+    uuid id PK
+    uuid event_id FK
+    timestamp starts_at
+    string venue
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  Seat {
+    uuid id PK
+    uuid session_id FK
+    string row
+    string number
+    string status "available|reserved|sold"
+    int version "OCC"
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  Reservation {
+    uuid id PK
+    uuid seat_id FK
+    uuid session_id FK
+    uuid user_id
+    string token "Redis key"
+    timestamp expires_at
+    string status "active|confirmed|expired"
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  Order {
+    uuid id PK
+    uuid user_id
+    string status "pending|paid|failed|cancelled"
+    decimal total
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  Payment {
+    uuid id PK
+    uuid order_id FK
+    string gateway_id
+    string status "pending|approved|rejected"
+    decimal amount
+    json metadata
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  OrderReservation {
+    uuid order_id PK_FK
+    uuid reservation_id PK_FK
+  }
 ```
 
-## Compile and run the project
+- **Event**: show/jogo.
+- **Session**: data/horário do evento em um local.
+- **Seat**: assento com `status` e `version` (OCC).
+- **Reservation**: reserva com TTL (`expires_at`), `token` (vínculo com Redis).
+- **Order**: pedido; associado a reservas via `order_reservations`.
+- **Payment**: tentativa de pagamento; confirmação via webhook atualiza Order e Reservations.
 
-```bash
-# development
-$ npm run start
+---
 
-# watch mode
-$ npm run start:dev
+## Gestão de concorrência
 
-# production mode
-$ npm run start:prod
+Para evitar **overselling**, o sistema usa:
+
+1. **Distributed lock (Redis)**  
+   Chave por assento: `lock:reservation:{sessionId}:{seatId}`. Apenas um processo altera o assento por vez. Lock com TTL (ex.: 5 s) para evitar deadlock.
+
+2. **Otimistic Concurrency Control (OCC)**  
+   A tabela `seats` tem `version`. A reserva só é aplicada com:
+   `UPDATE seats SET status = 'reserved', version = version + 1 WHERE id = ? AND version = ? AND status = 'available'`.  
+   Se nenhuma linha for afetada, há conflito (outro processo reservou); a reserva é abortada e o lock liberado.
+
+3. **Idempotência**  
+   Reservas podem enviar `idempotencyKey`. O resultado da primeira execução é guardado no Redis; requisições repetidas retornam o mesmo resultado sem nova reserva.
+
+Fluxo resumido da reserva:
+
+1. (Opcional) Consultar idempotency no Redis; se existir, retornar resultado anterior.
+2. Adquirir lock Redis para o assento.
+3. Buscar assento no DB; se não existir ou não estiver `available`, liberar lock e retornar erro.
+4. Criar entrada no Redis com TTL 10 min (`reservation:{token}`).
+5. Inserir `Reservation` e atualizar `Seat` com OCC; em caso de conflito, remover key no Redis, liberar lock e retornar erro.
+6. Publicar evento `SeatReserved` e liberar lock.
+
+---
+
+## Fluxo de checkout e TTL
+
+- Ao **reservar**: é criado registro em PostgreSQL (`Reservation` com `expires_at = now() + 10 min`) e uma key no Redis com TTL de **10 minutos** (600 s), configurável por `RESERVATION_TTL_SECONDS`.
+- **Expiração**: um job cron (a cada minuto) busca reservas com `status = 'active'` e `expires_at < now()`, chama `releaseReservation` para cada uma (remove key Redis, atualiza `Seat` para `available`, `Reservation` para `expired`) e publica `ReservationExpired`.
+- **Pagamento aprovado**: o webhook enfileira o evento; o worker atualiza `Payment`, `Order`, confirma as reservas (status `confirmed`, assento `sold`), remove as keys de reserva no Redis e publica `PaymentConfirmed`. O assento não depende só do TTL para “liberar”; a confirmação de pagamento fecha o ciclo.
+
+---
+
+## Thundering herd e escalabilidade
+
+Na abertura das vendas, muitos requests simultâneos podem bater no mesmo assento e no banco. O sistema mitiga com:
+
+1. **Rate limiting**  
+   Throttler global: 5 requisições por 60 segundos por IP (configurável). Reduz abuso e saturação por um único cliente.
+
+2. **Fila de reservas**  
+   `POST /reservations` não chama o serviço de reserva diretamente; envia um job para a fila BullMQ `reservation`. Workers processam em ordem; cada reserva usa lock por assento, então o paralelismo é por assento, não por evento inteiro.
+
+3. **Resposta HTTP**  
+   O controller espera até 15 s pelo resultado do job. Se o job não concluir a tempo, responde **503 Service Unavailable** com mensagem para tentar novamente.
+
+4. **Lock granular**  
+   Lock por `sessionId + seatId`, permitindo que vários assentos sejam reservados em paralelo por workers diferentes.
+
+---
+
+## Integração com gateway de pagamento (webhooks)
+
+### Endpoint
+
+- `POST /webhooks/payments/:provider`  
+  Ex.: `POST /webhooks/payments/stripe`. O `:provider` é informativo (Stripe, Mercado Pago, etc.).
+
+### Segurança
+
+- **Assinatura**: header `X-Webhook-Signature: sha256=<hex>`, onde `<hex>` é HMAC-SHA256 do **body bruto** da requisição com o segredo configurado em `WEBHOOK_PAYMENT_SECRET`.
+- Requisições sem assinatura ou com assinatura inválida recebem **401 Unauthorized**.
+- O body deve ser o JSON bruto (o app usa raw body para calcular o HMAC).
+
+### Fluxo
+
+1. Controller valida a assinatura (guard).
+2. Enfileira um job na fila `payment-webhook` com o payload (ex.: `eventType`, `gatewayId`).
+3. Responde **200 OK** com `{ "received": true }` para o gateway não reenviar por timeout.
+4. Worker processa o job: se `eventType === 'payment.approved'`, busca `Payment` por `gateway_id`; se já estiver `approved`, ignora (idempotência); senão atualiza Payment/Order, confirma reservas e assentos, remove keys no Redis e publica eventos.
+
+### Payload esperado (exemplo)
+
+```json
+{
+  "eventType": "payment.approved",
+  "gatewayId": "pay_xxx"
+}
 ```
 
-## Run tests
+O gateway real pode enviar outro formato; o worker deve ser adaptado para deserializar o evento do provider (Stripe, etc.) e extrair `gatewayId` e tipo de evento.
 
-```bash
-# unit tests
-$ npm run test
+### Retries
 
-# e2e tests
-$ npm run test:e2e
+Jobs da fila usam 3 tentativas com backoff exponencial. Falhas persistentes podem ser enviadas para dead-letter e alertas.
 
-# test coverage
-$ npm run test:cov
+---
+
+## Estrutura do projeto
+
+```
+src/
+├── app.module.ts
+├── main.ts
+├── config/
+│   ├── configuration.ts    # Factory de config (env)
+│   └── index.ts
+├── infrastructure/
+│   ├── infrastructure.module.ts
+│   ├── database/           # TypeORM + PostgreSQL
+│   ├── redis/              # Cliente Redis global
+│   └── queue/               # BullMQ (reservation, payment-webhook, reservation-expiration)
+└── modules/
+    ├── catalog/
+    │   ├── domain/         # Event, Session, Seat, ISeatRepository
+    │   ├── application/    # CatalogController
+    │   └── infrastructure/ # SeatRepository (TypeORM)
+    ├── reservation/
+    │   ├── domain/         # Reservation, interfaces (lock, cache, events), DTOs de request/result
+    │   ├── application/    # ReservationService, ReservationController, ReservationExpirationService
+    │   └── infrastructure/ # DistributedLockService, ReservationCacheService, repositories, processors
+    └── payment/
+        ├── domain/         # Order, Payment, OrderReservation
+        ├── application/    # PaymentWebhookService, PaymentConfirmationService, WebhookSignatureGuard
+        ├── infrastructure/ # Repositories, PaymentWebhookProcessor
+        └── webhooks/        # PaymentWebhookController
 ```
 
-## Deployment
+---
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## Pré-requisitos e configuração
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### Pré-requisitos
+
+- **Node.js** 18+
+- **PostgreSQL** (ex.: 14+)
+- **Redis** (ex.: 6+)
+
+### Variáveis de ambiente
+
+Copie `.env.example` para `.env` e ajuste:
+
+| Variável | Descrição | Default |
+|----------|------------|---------|
+| `PORT` | Porta HTTP | `3000` |
+| `DATABASE_HOST` | Host PostgreSQL | `localhost` |
+| `DATABASE_PORT` | Porta PostgreSQL | `5432` |
+| `DATABASE_USERNAME` | Usuário | `postgres` |
+| `DATABASE_PASSWORD` | Senha | `postgres` |
+| `DATABASE_NAME` | Nome do banco | `tickets` |
+| `REDIS_HOST` | Host Redis | `localhost` |
+| `REDIS_PORT` | Porta Redis | `6379` |
+| `REDIS_PASSWORD` | Senha Redis (opcional) | - |
+| `RESERVATION_TTL_SECONDS` | TTL da reserva no Redis (segundos) | `600` (10 min) |
+| `RESERVATION_LOCK_TTL_MS` | TTL do lock de reserva (ms) | `5000` |
+| `WEBHOOK_PAYMENT_SECRET` | Segredo para assinatura do webhook | (obrigatório em produção) |
+
+### Criar o banco
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+createdb tickets
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Ou no PostgreSQL:
 
-## Resources
+```sql
+CREATE DATABASE tickets;
+```
 
-Check out a few resources that may come in handy when working with NestJS:
+### Instalação
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+```bash
+npm install
+```
 
-## Support
+### Executar
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+```bash
+# desenvolvimento (watch)
+npm run start:dev
 
-## Stay in touch
+# produção (build + node)
+npm run build && npm run start:prod
+```
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+A API sobe em `http://localhost:3000` (ou na porta definida em `PORT`).
 
-## License
+---
+
+## API
+
+### Smoke (health)
+
+| Método | URL | Descrição |
+|--------|-----|-----------|
+| GET | `/` | Resposta simples do app (ex.: "Hello World!") |
+| GET | `/catalog/test` | Smoke do módulo Catalog |
+| GET | `/reservations/test` | Smoke do módulo Reservation |
+| GET | `/webhooks/payments/test` | Smoke do módulo Payment (webhooks) |
+
+### Reservas
+
+| Método | URL | Descrição |
+|--------|-----|-----------|
+| POST | `/reservations` | Reservar um assento (body JSON, rate limited e enfileirado) |
+
+**Body (POST /reservations):**
+
+```json
+{
+  "eventId": "uuid",
+  "sessionId": "uuid",
+  "seatId": "uuid",
+  "userId": "uuid",
+  "idempotencyKey": "string opcional"
+}
+```
+
+**Resposta de sucesso (200):**
+
+```json
+{
+  "success": true,
+  "reservationId": "uuid",
+  "token": "string",
+  "expiresAt": "ISO8601"
+}
+```
+
+**Resposta de erro (200 com success false ou 503):**
+
+```json
+{
+  "success": false,
+  "error": "Seat not available"
+}
+```
+
+Em caso de timeout da fila: **503 Service Unavailable**.
+
+### Webhook de pagamento
+
+| Método | URL | Descrição |
+|--------|-----|-----------|
+| POST | `/webhooks/payments/:provider` | Receber notificação do gateway (header `X-Webhook-Signature` obrigatório) |
+
+---
+
+## Testes
+
+```bash
+# Testes unitários (sem PostgreSQL/Redis)
+npm run test
+
+# Testes e2e (exigem PostgreSQL e Redis; banco `tickets` deve existir)
+npm run test:e2e
+
+# Cobertura
+npm run test:cov
+```
+
+- **Unit**: ex.: `ReservationService` com mocks (lock, cache, repositórios, event publisher).
+- **E2E**: smoke dos controllers, validação de body em `POST /reservations`, rejeição de webhook sem assinatura.
+
+---
+
+## Recursos
+
+- [NestJS](https://docs.nestjs.com)
+- [TypeORM](https://typeorm.io)
+- [BullMQ](https://docs.bullmq.io)
+- [NestJS Throttler](https://docs.nestjs.com/security/rate-limiting)
+
+---
+
+## Licença
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
