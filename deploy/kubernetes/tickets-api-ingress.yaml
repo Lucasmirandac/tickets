@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tickets-api
+  labels:
+    app: tickets-api
+  annotations:
+    kubernetes.io/ingress.class: nginx
+spec:
+  rules:
+    - host: tickets.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tickets-api
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - tickets.example.com
+      secretName: tickets-api-tls
+

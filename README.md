@@ -205,6 +205,28 @@ Na abertura das vendas, muitos requests simultâneos podem bater no mesmo assent
 4. **Lock granular**  
    Lock por `sessionId + seatId`, permitindo que vários assentos sejam reservados em paralelo por workers diferentes.
 
+### Workers e filas em produção
+
+Em produção, recomenda-se separar a responsabilidade entre API e processamento assíncrono:
+
+- API HTTP: containers focados em atender requisições REST (rotas `/catalog`, `/reservations`, `/orders`, `/webhooks/payments`, etc.).
+- Workers BullMQ: containers com a mesma imagem, mas com foco em processar filas:
+  - Fila `reservation` (reservas de assentos).
+  - Fila `payment-webhook` (confirmação de pagamento via webhook).
+  - `ReservationExpirationService` (cron de expiração) rodando em pelo menos uma instância.
+
+A escala pode ser feita assim:
+
+- Aumentar o número de réplicas da API conforme throughput HTTP.
+- Aumentar o número de réplicas dos workers conforme volume de jobs nas filas.
+
+As filas estão configuradas com:
+
+- `reservation`: tentativa única (o controller devolve 503 em timeout).
+- `payment-webhook`: 3 tentativas com backoff exponencial.
+
+Para cenários mais críticos, recomenda-se configurar uma dead-letter queue (DLQ) e monitorar jobs falhos nas filas.
+
 ---
 
 ## Integração com gateway de pagamento (webhooks)
@@ -319,6 +341,20 @@ npm run migration:revert
 
 Migrations ficam em `src/infrastructure/database/migrations/`. A primeira migration (`InitialSchema`) cria as tabelas: `events`, `sessions`, `seats`, `reservations`, `orders`, `payments`, `order_reservations`.
 
+#### Migrations e backups em produção
+
+Em produção, recomenda-se:
+
+- Executar migrations como parte da pipeline de deploy (CI/CD), antes de subir a nova versão da aplicação.
+- Garantir que as migrations sejam **compatíveis** com a versão anterior do código (evitando breaking changes imediatas em colunas usadas pela versão anterior).
+- Realizar **backup automático** do banco antes de migrations críticas (ex.: alterações em colunas grandes ou dados históricos).
+- Testar o fluxo de `migration:run` e `migration:revert` em um ambiente de staging com dados próximos aos de produção.
+
+Para bancos gerenciados (RDS, Cloud SQL etc.), configure:
+
+- Backups automáticos diários, com retenção adequada ao negócio.
+- Point-in-time recovery habilitado (quando disponível) para recuperar o estado do banco em caso de migrations problemáticas.
+
 ### Variáveis de ambiente
 
 Copie `.env.example` para `.env` e ajuste:
@@ -373,6 +409,26 @@ npm run build && npm run start:prod
 ```
 
 A API sobe em `http://localhost:3000` (ou na porta definida em `PORT`).
+
+### Deploy em produção (exemplo Kubernetes)
+
+Para um ambiente de produção, recomenda-se:
+
+- API rodando em containers a partir da imagem construída pelo `Dockerfile`
+- PostgreSQL e Redis como serviços gerenciados (RDS/Cloud SQL, ElastiCache, etc.)
+- Reverse proxy / ingress controlando HTTPS, timeouts e limites
+
+Este repositório inclui manifests de exemplo em `deploy/kubernetes`:
+
+- `tickets-api-deployment.yaml`: `Deployment` da API com 3 réplicas, probes de liveness/readiness e variáveis de ambiente vindas de `Secrets`
+- `tickets-api-service.yaml`: `Service` interno expondo a API na porta 80 dentro do cluster
+- `tickets-api-ingress.yaml`: `Ingress` NGINX expondo a API em `tickets.example.com` com TLS
+
+Esses manifests devem ser adaptados para o seu provedor de nuvem (nome da imagem, Secrets, domínio, certificados TLS etc.) e aplicados via:
+
+```bash
+kubectl apply -f deploy/kubernetes/
+```
 
 ---
 
@@ -508,6 +564,22 @@ npm run test:cov
 - **Unit**: ex.: `ReservationService` com mocks (lock, cache, repositórios, event publisher).
 - **E2E**: smoke dos controllers, validação de body em `POST /reservations`, rejeição de webhook sem assinatura.
 
+### Testes em CI/CD e carga
+
+Em uma pipeline de CI/CD típica, recomenda-se:
+
+- Executar `npm run lint`, `npm run test` e `npm run test:e2e` a cada PR.
+- Gerar relatório de cobertura com `npm run test:cov` e monitorar módulos críticos (reservation, payment, auth).
+- Rodar testes e2e contra banco/Redis efêmeros (containers descartáveis).
+
+Para testes de carga, use ferramentas como k6, Artillery ou Gatling para simular:
+
+- Pico de reservas (`POST /reservations`) na abertura de vendas.
+- Volume alto de webhooks de pagamento (`POST /webhooks/payments/:provider`).
+- Fluxo completo de checkout (`/reservations` → `/orders`).
+
+Os cenários de carga devem ser executados em um ambiente de staging o mais próximo possível de produção, com métricas ativas (latência, taxa de erro, consumo de CPU/memória) para calibrar limites de rate limiting, tamanho de instâncias e número de workers.
+
 ---
 
 ## Recursos
@@ -519,6 +591,62 @@ npm run test:cov
 
 ---
 
+## Operação e runbooks
+
+Alguns cenários comuns de operação:
+
+- **Fila de reserva crescendo ou travada**  
+  - Verificar o estado da fila `reservation` no Redis/BullMQ (jobs pendentes, falhos).
+  - Aumentar o número de workers (réplicas) responsáveis pela fila.
+  - Investigar logs de jobs falhos; se necessário, reprocessar jobs ou esvaziar a fila com cuidado.
+
+- **Divergência entre pagamentos e reservas**  
+  - Identificar pagamentos aprovados cujo `Payment`/`Order` não estão consistentes.
+  - Reprocessar os eventos de pagamento (via reenvio de webhook ou job manual em `payment-webhook`).
+  - Garantir que o processo de reconciliação respeite a idempotência (não vender o mesmo assento duas vezes).
+
+- **Banco ou Redis indisponíveis**  
+  - A aplicação passará a retornar erros 5xx em rotas dependentes; os health checks de readiness devem marcar a instância como `not ready`.
+  - Atuar na infra (RDS/Redis gerenciado) para restaurar o serviço e, se necessário, promover réplicas.
+  - Após a recuperação, monitorar as filas e o número de erros para validar a normalização do tráfego.
+
+Rotinas administrativas sugeridas:
+
+- Criação de admins iniciais via `ADMIN_EMAIL`/`ADMIN_PASSWORD` e posterior troca de senha em ambiente seguro.
+- Limpeza ou arquivamento de dados antigos (reservas expiradas, pagamentos antigos) por meio de scripts ou jobs agendados.
+
+---
+
 ## Licença
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+---
+
+## Fluxo sugerido de CI/CD
+
+Um fluxo típico de entrega contínua para este projeto pode seguir os passos:
+
+1. **CI (pull request)**  
+   - Instalar dependências (`npm install`).
+   - Rodar linters (`npm run lint`).
+   - Rodar testes unitários (`npm run test`) e e2e (`npm run test:e2e`).
+   - Opcional: verificar cobertura mínima com `npm run test:cov`.
+
+2. **Build da imagem**  
+   - Build da imagem Docker usando o `Dockerfile` multi-stage.
+   - Publicação da imagem em registry privado (`your-registry/tickets-api:<sha>`).
+
+3. **Migrations controladas**  
+   - Em ambiente de staging, rodar `npm run migration:run` apontando para o banco de staging.
+   - Após validar, rodar migrations em produção com janela e observabilidade ativas.
+
+4. **Rollout em produção**  
+   - Atualizar o `Deployment` (ou equivalente) para usar a nova tag de imagem.
+   - Utilizar rollout gradual (rolling update ou blue/green) com health checks (`/` e `/health/ready`) garantindo que apenas instâncias saudáveis recebam tráfego.
+
+5. **Rollback**  
+   - Em caso de problema crítico, voltar rapidamente para a imagem anterior.
+   - Se necessário, reverter migrations problemáticas com `npm run migration:revert` (desde que sejam reversíveis e planejadas para isso).
+
+Esse fluxo pode ser implementado em GitHub Actions, GitLab CI, CircleCI ou outro serviço similar, respeitando as mesmas etapas lógicas.

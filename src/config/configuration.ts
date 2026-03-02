@@ -1,7 +1,14 @@
-/**
- * Application configuration factory.
- * Reads from environment variables with defaults for local development.
- */
+const isProduction = process.env.NODE_ENV === 'production';
+
+const ensureEnv = (name: string, options?: { requiredInProduction?: boolean }): string => {
+  const value = process.env[name];
+  const isRequired = options?.requiredInProduction ?? false;
+  if (isProduction && isRequired && (!value || value.trim() === '')) {
+    throw new Error(`Environment variable ${name} is required in production.`);
+  }
+  return value ?? '';
+};
+
 export default () => ({
   port: parseInt(process.env.PORT ?? '3000', 10),
   database: {
@@ -26,10 +33,10 @@ export default () => ({
     reservationExpiration: process.env.QUEUE_RESERVATION_EXPIRATION ?? 'reservation-expiration',
   },
   webhook: {
-    paymentSecret: process.env.WEBHOOK_PAYMENT_SECRET ?? '',
+    paymentSecret: ensureEnv('WEBHOOK_PAYMENT_SECRET', { requiredInProduction: true }),
   },
   jwt: {
-    secret: process.env.JWT_SECRET ?? 'change-me-in-production',
+    secret: ensureEnv('JWT_SECRET', { requiredInProduction: true }) || 'change-me-in-production',
     expiresIn: process.env.JWT_EXPIRES_IN ?? '1d',
   },
   admin: {
