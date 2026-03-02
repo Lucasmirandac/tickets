@@ -77,13 +77,18 @@ erDiagram
   Event ||--o{ Session : has
   Session ||--o{ Seat : has
   Seat ||--o{ Reservation : "reserved_by"
-  Reservation ||--o| Order : "fulfills"
+  User ||--o{ Reservation : "makes"
+  User ||--o{ Order : "places"
+  User ||--|| Admin : "admin_profile"
+  Reservation ||--o{ OrderReservation : "belongs_to"
+  Order ||--o{ OrderReservation : "contains"
   Order ||--o{ Payment : has
 
   Event {
     uuid id PK
     string name
     string slug
+    string description
     timestamp created_at
     timestamp updated_at
   }
@@ -92,7 +97,9 @@ erDiagram
     uuid id PK
     uuid event_id FK
     timestamp starts_at
+    timestamp ends_at
     string venue
+    string description
     timestamp created_at
     timestamp updated_at
   }
@@ -108,11 +115,34 @@ erDiagram
     timestamp updated_at
   }
 
+  User {
+    uuid id PK
+    string email
+    string password_hash
+    string address_street
+    string address_number
+    string address_complement
+    string address_neighborhood
+    string address_city
+    string address_state
+    string address_postal_code
+    string address_country
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  Admin {
+    uuid id PK
+    uuid user_id FK
+    string admin_type "super_admin|event_manager|ticket_validator"
+    timestamp created_at
+  }
+
   Reservation {
     uuid id PK
     uuid seat_id FK
     uuid session_id FK
-    uuid user_id
+    uuid user_id FK
     string token "Redis key"
     timestamp expires_at
     string status "active|confirmed|expired"
@@ -122,7 +152,7 @@ erDiagram
 
   Order {
     uuid id PK
-    uuid user_id
+    uuid user_id FK
     string status "pending|paid|failed|cancelled"
     decimal total
     timestamp created_at
@@ -149,9 +179,11 @@ erDiagram
 - **Event**: show/jogo.
 - **Session**: data/horário do evento em um local.
 - **Seat**: assento com `status` e `version` (OCC).
-- **Reservation**: reserva com TTL (`expires_at`), `token` (vínculo com Redis).
-- **Order**: pedido; associado a reservas via `order_reservations`.
-- **Payment**: tentativa de pagamento; confirmação via webhook atualiza Order e Reservations.
+- **User**: usuário autenticado, com email/senha e endereço para faturamento.
+- **Admin**: perfil administrativo ligado a um `User` (tipos `super_admin`, `event_manager`, `ticket_validator`).
+- **Reservation**: reserva com TTL (`expires_at`), `token` (vínculo com Redis) e vínculo a `User` e `Seat`.
+- **Order**: pedido criado pelo usuário; associa-se a uma ou mais reservas via `order_reservations`.
+- **Payment**: tentativa de pagamento; confirmação via webhook atualiza `Order` e `Reservation`.
 
 ---
 
