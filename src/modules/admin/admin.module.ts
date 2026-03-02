@@ -6,9 +6,11 @@ import { Session } from '../catalog/domain/session.entity';
 import { AuthModule } from '../auth/auth.module';
 import { AdminController } from './application/admin.controller';
 import { AdminCatalogService } from './application/admin-catalog.service';
+import { AdminPersistenceModule } from './admin-persistence.module';
 
 @Module({
   imports: [
+    AdminPersistenceModule,
     TypeOrmModule.forFeature([Event, Session, Seat]),
     AuthModule,
   ],

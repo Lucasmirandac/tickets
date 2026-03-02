@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AdminPersistenceModule } from '../admin/admin-persistence.module';
 import { User } from './domain/user.entity';
 import { AuthController } from './application/auth.controller';
 import { AuthService } from './application/auth.service';
@@ -12,6 +13,7 @@ import { RolesGuard } from './application/guards/roles.guard';
 
 @Module({
   imports: [
+    AdminPersistenceModule,
     TypeOrmModule.forFeature([User]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({

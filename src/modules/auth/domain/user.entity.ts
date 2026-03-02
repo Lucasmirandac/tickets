@@ -6,10 +6,9 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-export type UserRole = 'admin' | 'user';
-
 /**
- * User entity. Used for authentication and authorization (admin role for admin routes).
+ * User entity. Identity for authentication. Admin privileges are determined by
+ * the presence of a row in the admins table (Admin entity), not by a role on User.
  */
 @Entity('users')
 export class User {
@@ -21,9 +20,6 @@ export class User {
 
   @Column({ name: 'password_hash', type: 'varchar', length: 255 })
   passwordHash: string;
-
-  @Column({ type: 'varchar', length: 32, default: 'user' })
-  role: UserRole;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
