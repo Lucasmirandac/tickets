@@ -31,6 +31,33 @@ services:
       timeout: 3s
       retries: 5
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tickets-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USERNAME: postgres
+      DATABASE_PASSWORD: postgres
+      DATABASE_NAME: tickets
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RESERVATION_TTL_SECONDS: 600
+      RESERVATION_LOCK_TTL_MS: 5000
+      WEBHOOK_PAYMENT_SECRET: ${WEBHOOK_PAYMENT_SECRET:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   redis_data:
