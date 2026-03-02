@@ -378,6 +378,12 @@ A API sobe em `http://localhost:3000` (ou na porta definida em `PORT`).
 
 ## API
 
+Documentação interativa (Swagger UI) disponível em:
+
+- **http://localhost:3000/api/docs**
+
+É possível testar as rotas protegidas informando o JWT em *Authorize* (Bearer token).
+
 ### Smoke (health)
 
 | Método | URL | Descrição |

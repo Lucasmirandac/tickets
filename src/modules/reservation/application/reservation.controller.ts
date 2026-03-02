@@ -8,6 +8,7 @@ import {
   ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common';
+import { ApiBearerAuth, ApiBody, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
@@ -21,6 +22,7 @@ import { ReservationRequest, ReservationResult } from '../domain/reservation-req
 const RESERVE_JOB_WAIT_MS = 15000;
 const RESERVE_JOB_POLL_MS = 200;
 
+@ApiTags('reservations')
 @Controller('reservations')
 @UseGuards(ThrottlerGuard)
 export class ReservationController {
@@ -36,6 +38,21 @@ export class ReservationController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('jwt')
+  @ApiBody({ type: ReserveSeatDto })
+  @ApiOkResponse({
+    description: 'Reservation result with token and expiry',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        reservationId: { type: 'string', format: 'uuid' },
+        token: { type: 'string' },
+        expiresAt: { type: 'string', format: 'date-time' },
+        error: { type: 'string' },
+      },
+    },
+  })
   @HttpCode(HttpStatus.OK)
   async reserve(
     @CurrentUser() user: CurrentUserPayload,

@@ -4,6 +4,7 @@ import {
   Param,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { CatalogService } from './catalog.service';
 import type { EventResponseDto } from './dto/event-response.dto';
 import type { SeatResponseDto } from './dto/seat-response.dto';
@@ -12,6 +13,7 @@ import type { SessionResponseDto } from './dto/session-response.dto';
 /**
  * Catalog controller. Exposes events, sessions and seats for the frontend.
  */
+@ApiTags('catalog')
 @Controller('catalog')
 export class CatalogController {
   constructor(private readonly catalogService: CatalogService) {}
