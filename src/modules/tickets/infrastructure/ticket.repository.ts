@@ -29,6 +29,10 @@ export class TicketRepository {
     return this.repo.findOne({ where: { reservationId } });
   }
 
+  async findByQrPayload(qrPayload: string): Promise<Ticket | null> {
+    return this.repo.findOne({ where: { qrPayload } });
+  }
+
   create(data: {
     reservationId: string;
     orderId: string;

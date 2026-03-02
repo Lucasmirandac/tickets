@@ -410,18 +410,26 @@ Coleção **Postman** em `postman/Tickets-API.postman_collection.json`. Importe 
 |--------|-----|-----------|
 | GET | `/users/me` | Retorna o usuário logado: `{ id, email, role }`. |
 
-### Admin (JWT + role admin)
+### Admin (JWT + roles)
 
-Todas as rotas abaixo exigem header `Authorization: Bearer <access_token>` e usuário com role `admin`. Se `ADMIN_EMAIL` e `ADMIN_PASSWORD` estiverem definidos no primeiro start, um usuário admin é criado automaticamente.
+As rotas de admin exigem header `Authorization: Bearer <access_token>` e um dos **roles**: `super_admin`, `event_manager`, `ticket_validator`. O primeiro admin (seed com `ADMIN_EMAIL`/`ADMIN_PASSWORD`) é criado como `super_admin`.
 
-| Método | URL | Descrição |
-|--------|-----|-----------|
-| GET | `/admin/events` | Listar eventos |
-| POST | `/admin/events` | Criar evento (name, slug opcional, description opcional) |
-| PATCH | `/admin/events/:id` | Atualizar evento |
-| POST | `/admin/events/:eventId/sessions` | Criar sessão (startsAt, venue, description opcional, endsAt opcional) |
-| PATCH | `/admin/sessions/:id` | Atualizar sessão |
-| POST | `/admin/sessions/:sessionId/seats` | Criar assentos em lote (body: `{ "seats": [{ "row", "number" }] }`) |
+| Role | Permissões |
+|------|------------|
+| **super_admin** | Tudo: criar eventos, validar tickets QR, criar novos admins |
+| **event_manager** | Criar/editar eventos, sessões e assentos |
+| **ticket_validator** | Validar ingressos por QR code (portaria) |
+
+| Método | URL | Roles | Descrição |
+|--------|-----|-------|-----------|
+| GET | `/admin/events` | todos | Listar eventos |
+| POST | `/admin/events` | super_admin, event_manager | Criar evento |
+| PATCH | `/admin/events/:id` | super_admin, event_manager | Atualizar evento |
+| POST | `/admin/events/:eventId/sessions` | super_admin, event_manager | Criar sessão |
+| PATCH | `/admin/sessions/:id` | super_admin, event_manager | Atualizar sessão |
+| POST | `/admin/sessions/:sessionId/seats` | super_admin, event_manager | Criar assentos em lote |
+| POST | `/admin/tickets/validate` | super_admin, ticket_validator | Validar ingresso por QR (body: `{ "qrPayload": "string" }`) |
+| POST | `/admin/admins` | super_admin | Criar novo admin (body: `{ "email", "password", "adminType": "super_admin" \| "event_manager" \| "ticket_validator" }`) |
 
 ### Reservas (JWT obrigatório em POST)
 

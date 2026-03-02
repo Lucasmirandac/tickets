@@ -17,7 +17,9 @@ jest.mock('bcrypt', () => ({
 describe('AuthService', () => {
   let service: AuthService;
   let mockUserRepository: jest.Mocked<Pick<Repository<User>, 'findOne' | 'save' | 'create'>>;
-  let mockAdminRepository: jest.Mocked<Pick<AdminRepository, 'existsByUserId' | 'createForUser'>>;
+  let mockAdminRepository: jest.Mocked<
+    Pick<AdminRepository, 'findByUserId' | 'existsByUserId' | 'createForUser'>
+  >;
   let mockJwtService: jest.Mocked<Pick<JwtService, 'sign'>>;
   let mockConfigService: jest.Mocked<Pick<ConfigService, 'get'>>;
 
@@ -39,6 +41,7 @@ describe('AuthService', () => {
       create: jest.fn(),
     };
     mockAdminRepository = {
+      findByUserId: jest.fn(),
       existsByUserId: jest.fn(),
       createForUser: jest.fn(),
     };
@@ -97,27 +100,33 @@ describe('AuthService', () => {
   });
 
   describe('login', () => {
-    it('should set role to admin when user is admin', async () => {
-      mockAdminRepository.existsByUserId.mockResolvedValue(true);
+    it('should set role to admin type when user is admin', async () => {
+      mockAdminRepository.findByUserId.mockResolvedValue({
+        id: 'admin-1',
+        userId,
+        adminType: 'super_admin',
+        createdAt: new Date(),
+      } as never);
       const user = { id: userId, email, createdAt: new Date(), updatedAt: new Date() };
 
       const actual = await service.login(user);
 
       expect(actual.access_token).toBe('jwt-token');
       expect(actual.expires_in).toBe('1d');
-      expect(mockAdminRepository.existsByUserId).toHaveBeenCalledWith(userId);
+      expect(mockAdminRepository.findByUserId).toHaveBeenCalledWith(userId);
       expect(mockJwtService.sign).toHaveBeenCalledWith(
-        expect.objectContaining({ sub: userId, email, role: 'admin' }),
+        expect.objectContaining({ sub: userId, email, role: 'super_admin' }),
         expect.any(Object),
       );
     });
 
     it('should set role to user when user is not admin', async () => {
-      mockAdminRepository.existsByUserId.mockResolvedValue(false);
+      mockAdminRepository.findByUserId.mockResolvedValue(null);
       const user = { id: userId, email, createdAt: new Date(), updatedAt: new Date() };
 
       const actual = await service.login(user);
 
+      expect(mockAdminRepository.findByUserId).toHaveBeenCalledWith(userId);
       expect(mockJwtService.sign).toHaveBeenCalledWith(
         expect.objectContaining({ role: 'user' }),
         expect.any(Object),
@@ -142,7 +151,7 @@ describe('AuthService', () => {
       mockUserRepository.findOne.mockResolvedValue(null);
       mockUserRepository.create.mockReturnValue(mockUser as User);
       mockUserRepository.save.mockResolvedValue(mockUser as User);
-      mockAdminRepository.existsByUserId.mockResolvedValue(false);
+      mockAdminRepository.findByUserId.mockResolvedValue(null);
 
       const actual = await service.register(email, 'password');
 
@@ -178,7 +187,7 @@ describe('AuthService', () => {
       };
       mockUserRepository.create.mockReturnValue(userWithAddress as User);
       mockUserRepository.save.mockResolvedValue(userWithAddress as User);
-      mockAdminRepository.existsByUserId.mockResolvedValue(false);
+      mockAdminRepository.findByUserId.mockResolvedValue(null);
 
       const actual = await service.register(email, 'password', {
         street: 'Rua A',
@@ -219,7 +228,7 @@ describe('AuthService', () => {
 
     it('should return login result when credentials are valid', async () => {
       mockUserRepository.findOne.mockResolvedValue(mockUser);
-      mockAdminRepository.existsByUserId.mockResolvedValue(false);
+      mockAdminRepository.findByUserId.mockResolvedValue(null);
 
       const actual = await service.loginWithCredentials(email, 'password');
 
@@ -248,11 +257,11 @@ describe('AuthService', () => {
         return '';
       });
       mockUserRepository.findOne.mockResolvedValue(mockUser);
-      mockAdminRepository.existsByUserId.mockResolvedValue(false);
+      mockAdminRepository.findByUserId.mockResolvedValue(null);
 
       await service.seedAdminIfConfigured();
 
-      expect(mockAdminRepository.createForUser).toHaveBeenCalledWith(userId);
+      expect(mockAdminRepository.createForUser).toHaveBeenCalledWith(userId, 'super_admin');
       expect(mockUserRepository.save).not.toHaveBeenCalled();
     });
 
@@ -287,7 +296,73 @@ describe('AuthService', () => {
         expect.objectContaining({ email, passwordHash: 'hashed' }),
       );
       expect(mockUserRepository.save).toHaveBeenCalled();
-      expect(mockAdminRepository.createForUser).toHaveBeenCalledWith(userId);
+      expect(mockAdminRepository.createForUser).toHaveBeenCalledWith(userId, 'super_admin');
+    });
+  });
+
+  describe('createAdmin', () => {
+    it('should create new user and admin with given type', async () => {
+      mockUserRepository.findOne.mockResolvedValue(null);
+      mockUserRepository.create.mockReturnValue(mockUser as User);
+      mockUserRepository.save.mockResolvedValue(mockUser as User);
+      mockAdminRepository.createForUser.mockResolvedValue({
+        id: 'admin-1',
+        userId,
+        adminType: 'event_manager',
+        createdAt: new Date(),
+      } as never);
+
+      const actual = await service.createAdmin(
+        'new@example.com',
+        'password',
+        'event_manager',
+      );
+
+      expect(actual.userId).toBe(userId);
+      expect(actual.adminId).toBe('admin-1');
+      expect(mockUserRepository.save).toHaveBeenCalled();
+      expect(mockAdminRepository.createForUser).toHaveBeenCalledWith(
+        userId,
+        'event_manager',
+      );
+    });
+
+    it('should add admin to existing user when user exists and is not admin', async () => {
+      mockUserRepository.findOne.mockResolvedValue(mockUser as User);
+      mockAdminRepository.findByUserId.mockResolvedValue(null);
+      mockAdminRepository.createForUser.mockResolvedValue({
+        id: 'admin-2',
+        userId,
+        adminType: 'ticket_validator',
+        createdAt: new Date(),
+      } as never);
+
+      const actual = await service.createAdmin(email, 'password', 'ticket_validator');
+
+      expect(actual.adminId).toBe('admin-2');
+      expect(mockUserRepository.save).not.toHaveBeenCalled();
+      expect(mockAdminRepository.createForUser).toHaveBeenCalledWith(
+        userId,
+        'ticket_validator',
+      );
+    });
+
+    it('should throw ConflictException when user is already admin', async () => {
+      mockUserRepository.findOne.mockResolvedValue(mockUser as User);
+      mockAdminRepository.findByUserId.mockResolvedValue({
+        id: 'admin-1',
+        userId,
+        adminType: 'super_admin',
+        createdAt: new Date(),
+      } as never);
+
+      await expect(
+        service.createAdmin(email, 'password', 'event_manager'),
+      ).rejects.toThrow(ConflictException);
+      await expect(
+        service.createAdmin(email, 'password', 'event_manager'),
+      ).rejects.toThrow('User is already an admin');
+      expect(mockAdminRepository.createForUser).not.toHaveBeenCalled();
     });
   });
 });

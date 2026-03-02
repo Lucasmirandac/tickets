@@ -1,4 +1,4 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as QRCode from 'qrcode';
 import { CatalogService } from '../../catalog/application/catalog.service';
@@ -14,7 +14,10 @@ jest.mock('qrcode', () => ({
 describe('TicketService', () => {
   let service: TicketService;
   let mockTicketRepository: jest.Mocked<
-    Pick<TicketRepository, 'findByReservationId' | 'findById' | 'findByUserId' | 'create' | 'save'>
+    Pick<
+      TicketRepository,
+      'findByReservationId' | 'findById' | 'findByUserId' | 'findByQrPayload' | 'create' | 'save'
+    >
   >;
   let mockReservationService: jest.Mocked<Pick<ReservationService, 'findById'>>;
   let mockCatalogService: jest.Mocked<Pick<CatalogService, 'findSessionById'>>;
@@ -61,6 +64,7 @@ describe('TicketService', () => {
       findByReservationId: jest.fn(),
       findById: jest.fn(),
       findByUserId: jest.fn().mockResolvedValue([]),
+      findByQrPayload: jest.fn(),
       create: jest.fn(),
       save: jest.fn(),
     };
@@ -183,6 +187,54 @@ describe('TicketService', () => {
         type: 'png',
         margin: 2,
       });
+    });
+  });
+
+  describe('validateByQrPayload', () => {
+    it('should throw NotFoundException when QR payload does not match any ticket', async () => {
+      mockTicketRepository.findByQrPayload.mockResolvedValue(null);
+
+      await expect(service.validateByQrPayload('unknown-qr')).rejects.toThrow(
+        NotFoundException,
+      );
+      await expect(service.validateByQrPayload('unknown-qr')).rejects.toThrow(
+        'Ticket not found for this QR code',
+      );
+    });
+
+    it('should throw BadRequestException when ticket was already validated', async () => {
+      mockTicketRepository.findByQrPayload.mockResolvedValue({
+        ...mockTicket,
+        validatedAt: new Date(),
+      } as Ticket);
+
+      await expect(service.validateByQrPayload('payload')).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.validateByQrPayload('payload')).rejects.toThrow(
+        'Ticket has already been used',
+      );
+    });
+
+    it('should set validatedAt and return ticket info when valid', async () => {
+      const ticketWithNoValidation = { ...mockTicket, validatedAt: null };
+      mockTicketRepository.findByQrPayload.mockResolvedValue(
+        ticketWithNoValidation as Ticket,
+      );
+      mockTicketRepository.save.mockResolvedValue({
+        ...ticketWithNoValidation,
+        validatedAt: new Date(),
+      } as Ticket);
+
+      const actual = await service.validateByQrPayload('payload');
+
+      expect(actual.valid).toBe(true);
+      expect(actual.ticketId).toBe(ticketId);
+      expect(actual.eventId).toBe('event-1');
+      expect(actual.sessionId).toBe('session-1');
+      expect(actual.seatId).toBe('seat-1');
+      expect(actual.validatedAt).toBeInstanceOf(Date);
+      expect(mockTicketRepository.save).toHaveBeenCalled();
     });
   });
 });

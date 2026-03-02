@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import * as QRCode from 'qrcode';
 import { v4 as uuid } from 'uuid';
 import { CatalogService } from '../../catalog/application/catalog.service';
@@ -61,5 +66,37 @@ export class TicketService {
   async getQrPngBuffer(ticketId: string, userId: string): Promise<Buffer> {
     const ticket = await this.getById(ticketId, userId);
     return QRCode.toBuffer(ticket.qrPayload, { type: 'png', margin: 2 });
+  }
+
+  /**
+   * Validates a ticket by QR payload (e.g. at entrance). Marks ticket as validated.
+   * Only for admin roles with ticket_validator or super_admin.
+   */
+  async validateByQrPayload(qrPayload: string): Promise<{
+    valid: boolean;
+    ticketId: string;
+    eventId: string;
+    sessionId: string;
+    seatId: string;
+    validatedAt: Date;
+  }> {
+    const ticket = await this.ticketRepository.findByQrPayload(qrPayload);
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found for this QR code');
+    }
+    if (ticket.validatedAt) {
+      throw new BadRequestException('Ticket has already been used');
+    }
+    const now = new Date();
+    ticket.validatedAt = now;
+    await this.ticketRepository.save(ticket);
+    return {
+      valid: true,
+      ticketId: ticket.id,
+      eventId: ticket.eventId,
+      sessionId: ticket.sessionId,
+      seatId: ticket.seatId,
+      validatedAt: now,
+    };
   }
 }

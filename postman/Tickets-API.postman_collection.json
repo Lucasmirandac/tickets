@@ -275,7 +275,7 @@
     },
     {
       "name": "Admin",
-      "description": "Todas as rotas exigem JWT com usuário admin (role admin). Faça login com ADMIN_EMAIL/ADMIN_PASSWORD antes.",
+      "description": "Rotas exigem JWT com role: super_admin, event_manager ou ticket_validator. Create event/session/seats: super_admin ou event_manager. Validate ticket: super_admin ou ticket_validator. Create admin: apenas super_admin.",
       "item": [
         {
           "name": "List events",
@@ -366,6 +366,38 @@
             },
             "url": "{{baseUrl}}/admin/sessions/{{sessionId}}/seats",
             "description": "Criar assentos em lote para a sessão"
+          }
+        },
+        {
+          "name": "Validate ticket QR",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"qrPayload\": \"<payload-do-qr-do-ingresso>\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/tickets/validate",
+            "description": "Validar ingresso por QR (super_admin ou ticket_validator). Marca como usado."
+          }
+        },
+        {
+          "name": "Create admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"validator@example.com\",\n  \"password\": \"secret123\",\n  \"adminType\": \"ticket_validator\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/admins",
+            "description": "Criar novo admin (apenas super_admin). adminType: super_admin, event_manager ou ticket_validator."
           }
         }
       ]

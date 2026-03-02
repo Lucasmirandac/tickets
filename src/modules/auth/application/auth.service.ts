@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import type { AdminType } from '../../admin/domain/admin-types';
 import { AdminRepository } from '../../admin/infrastructure/admin.repository';
 import { User } from '../domain/user.entity';
 
@@ -40,8 +41,8 @@ export class AuthService {
   }
 
   async login(user: UserForLogin): Promise<LoginResult> {
-    const isAdmin = await this.adminRepository.existsByUserId(user.id);
-    const role = isAdmin ? 'admin' : 'user';
+    const admin = await this.adminRepository.findByUserId(user.id);
+    const role = admin ? admin.adminType : 'user';
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
@@ -106,6 +107,31 @@ export class AuthService {
   }
 
   /**
+   * Creates a new admin (only for super_admin). Creates User if not exists, then Admin with adminType.
+   */
+  async createAdmin(
+    email: string,
+    password: string,
+    adminType: AdminType,
+  ): Promise<{ userId: string; adminId: string }> {
+    let user = await this.userRepository.findOne({ where: { email } });
+    if (user) {
+      const existingAdmin = await this.adminRepository.findByUserId(user.id);
+      if (existingAdmin) {
+        throw new ConflictException('User is already an admin');
+      }
+      const admin = await this.adminRepository.createForUser(user.id, adminType);
+      return { userId: user.id, adminId: admin.id };
+    }
+    const passwordHash = await bcrypt.hash(password, 10);
+    user = await this.userRepository.save(
+      this.userRepository.create({ email, passwordHash }),
+    );
+    const admin = await this.adminRepository.createForUser(user.id, adminType);
+    return { userId: user.id, adminId: admin.id };
+  }
+
+  /**
    * Seeds an admin when ADMIN_EMAIL and ADMIN_PASSWORD are set and no admin exists.
    * Creates a User and an Admin row (single source of truth for admin privileges).
    */
@@ -117,13 +143,13 @@ export class AuthService {
     if (user) {
       const alreadyAdmin = await this.adminRepository.existsByUserId(user.id);
       if (alreadyAdmin) return;
-      await this.adminRepository.createForUser(user.id);
+      await this.adminRepository.createForUser(user.id, 'super_admin');
       return;
     }
     const hash = await bcrypt.hash(password, 10);
     user = await this.userRepository.save(
       this.userRepository.create({ email, passwordHash: hash }),
     );
-    await this.adminRepository.createForUser(user.id);
+    await this.adminRepository.createForUser(user.id, 'super_admin');
   }
 }

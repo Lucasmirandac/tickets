@@ -31,6 +31,9 @@ export class Ticket {
   @Column({ name: 'qr_payload', type: 'varchar', length: 512 })
   qrPayload: string;
 
+  @Column({ name: 'validated_at', type: 'timestamp', nullable: true })
+  validatedAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }
