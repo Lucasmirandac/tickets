@@ -150,9 +150,57 @@ describe('AuthService', () => {
       expect(actual.expires_in).toBe('1d');
       expect(bcrypt.hash).toHaveBeenCalledWith('password', 10);
       expect(mockUserRepository.save).toHaveBeenCalled();
+      expect(mockUserRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email,
+          passwordHash: 'hashed',
+          addressStreet: null,
+          addressCity: null,
+          addressPostalCode: null,
+        }),
+      );
       expect(mockJwtService.sign).toHaveBeenCalledWith(
         expect.objectContaining({ email, role: 'user' }),
         expect.any(Object),
+      );
+    });
+
+    it('should create user with address when address is provided', async () => {
+      mockUserRepository.findOne.mockResolvedValue(null);
+      const userWithAddress = {
+        ...mockUser,
+        addressStreet: 'Rua A',
+        addressNumber: '100',
+        addressCity: 'São Paulo',
+        addressState: 'SP',
+        addressPostalCode: '01234-567',
+        addressCountry: 'Brasil',
+      };
+      mockUserRepository.create.mockReturnValue(userWithAddress as User);
+      mockUserRepository.save.mockResolvedValue(userWithAddress as User);
+      mockAdminRepository.existsByUserId.mockResolvedValue(false);
+
+      const actual = await service.register(email, 'password', {
+        street: 'Rua A',
+        number: '100',
+        city: 'São Paulo',
+        state: 'SP',
+        postalCode: '01234-567',
+        country: 'Brasil',
+      });
+
+      expect(actual.access_token).toBe('jwt-token');
+      expect(mockUserRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email,
+          passwordHash: 'hashed',
+          addressStreet: 'Rua A',
+          addressNumber: '100',
+          addressCity: 'São Paulo',
+          addressState: 'SP',
+          addressPostalCode: '01234-567',
+          addressCountry: 'Brasil',
+        }),
       );
     });
   });

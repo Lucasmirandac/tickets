@@ -1,0 +1,395 @@
+{
+  "info": {
+    "name": "Tickets API",
+    "description": "Coleção para a API do sistema de venda de ingressos. Rotas protegidas usam a variável `access_token` (preenchida após POST /auth/login).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "access_token", "value": "" },
+    { "key": "eventId", "value": "" },
+    { "key": "sessionId", "value": "" },
+    { "key": "seatId", "value": "" },
+    { "key": "ticketId", "value": "" },
+    { "key": "slug", "value": "my-event-slug" }
+  ],
+  "item": [
+    {
+      "name": "Smoke",
+      "item": [
+        {
+          "name": "Root",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/",
+            "description": "Resposta simples do app"
+          }
+        },
+        {
+          "name": "Catalog test",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/catalog/test",
+            "description": "Smoke do módulo Catalog"
+          }
+        },
+        {
+          "name": "Reservations test",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/reservations/test",
+            "description": "Smoke do módulo Reservation"
+          }
+        },
+        {
+          "name": "Webhooks payments test",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/webhooks/payments/test",
+            "description": "Smoke do módulo Payment"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const json = pm.response.json();",
+                  "    if (json.access_token) {",
+                  "        pm.collectionVariables.set('access_token', json.access_token);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"newuser@example.com\",\n  \"password\": \"secret123\",\n  \"address\": {\n    \"street\": \"Rua Exemplo\",\n    \"number\": \"100\",\n    \"complement\": \"Apto 1\",\n    \"neighborhood\": \"Centro\",\n    \"city\": \"São Paulo\",\n    \"state\": \"SP\",\n    \"postalCode\": \"01234-567\",\n    \"country\": \"Brasil\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/auth/register",
+            "description": "Cadastro de usuário. Senha mínimo 6 caracteres. address opcional (faturamento). Retorna JWT (salvo em access_token). 409 se email já existir."
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const json = pm.response.json();",
+                  "    if (json.access_token) {",
+                  "        pm.collectionVariables.set('access_token', json.access_token);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"your-password\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login",
+            "description": "Login. Retorna JWT; o token é salvo em access_token para as demais requisições."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Get me",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{baseUrl}}/users/me",
+            "description": "Retorna o usuário logado (id, email, role). Requer JWT."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Catalog",
+      "item": [
+        {
+          "name": "List events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/catalog/events",
+            "description": "Lista todos os eventos"
+          }
+        },
+        {
+          "name": "Get event by slug",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/catalog/events/slug/{{slug}}",
+            "description": "Busca evento por slug"
+          }
+        },
+        {
+          "name": "Get event by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/catalog/events/id/{{eventId}}",
+            "description": "Busca evento por UUID"
+          }
+        },
+        {
+          "name": "Get sessions by event",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/catalog/events/{{eventId}}/sessions",
+            "description": "Lista sessões do evento"
+          }
+        },
+        {
+          "name": "Get session by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/catalog/sessions/{{sessionId}}",
+            "description": "Detalhe da sessão"
+          }
+        },
+        {
+          "name": "Get seats by session",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/catalog/sessions/{{sessionId}}/seats",
+            "description": "Lista assentos da sessão"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reservations",
+      "item": [
+        {
+          "name": "Reserve seat",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventId\": \"{{eventId}}\",\n  \"sessionId\": \"{{sessionId}}\",\n  \"seatId\": \"{{seatId}}\",\n  \"idempotencyKey\": \"optional-key\"\n}"
+            },
+            "url": "{{baseUrl}}/reservations",
+            "description": "Reserva um assento. Requer JWT; userId vem do token. Retorna token da reserva para usar em POST /orders."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "Create order",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reservationTokens\": [\n    \"token-from-reservation-1\",\n    \"token-from-reservation-2\"\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/orders",
+            "description": "Cria pedido a partir dos tokens de reserva. Retorna orderId e total."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tickets",
+      "item": [
+        {
+          "name": "List my tickets",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{baseUrl}}/tickets",
+            "description": "Lista ingressos do usuário logado"
+          }
+        },
+        {
+          "name": "Get ticket by id",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{baseUrl}}/tickets/{{ticketId}}",
+            "description": "Detalhe de um ingresso (apenas dono)"
+          }
+        },
+        {
+          "name": "Get ticket QR (PNG)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{baseUrl}}/tickets/{{ticketId}}/qr",
+            "description": "Retorna imagem PNG do QR do ingresso"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "description": "Todas as rotas exigem JWT com usuário admin (role admin). Faça login com ADMIN_EMAIL/ADMIN_PASSWORD antes.",
+      "item": [
+        {
+          "name": "List events",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{baseUrl}}/admin/events",
+            "description": "Listar eventos (admin)"
+          }
+        },
+        {
+          "name": "Create event",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Show de Rock\",\n  \"slug\": \"show-rock-2025\",\n  \"description\": \"Descrição opcional\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/events",
+            "description": "Criar evento. slug e description opcionais."
+          }
+        },
+        {
+          "name": "Update event",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Show de Rock (atualizado)\",\n  \"slug\": \"show-rock-2025\",\n  \"description\": \"Nova descrição\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/events/{{eventId}}",
+            "description": "Atualizar evento. Todos os campos opcionais."
+          }
+        },
+        {
+          "name": "Create session",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"startsAt\": \"2025-12-31T20:00:00.000Z\",\n  \"venue\": \"Arena\",\n  \"description\": \"Opcional\",\n  \"endsAt\": \"2025-12-31T23:00:00.000Z\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/events/{{eventId}}/sessions",
+            "description": "Criar sessão para o evento. description e endsAt opcionais."
+          }
+        },
+        {
+          "name": "Update session",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"startsAt\": \"2025-12-31T21:00:00.000Z\",\n  \"venue\": \"Arena Principal\",\n  \"description\": \"Atualizado\",\n  \"endsAt\": \"2025-12-31T23:30:00.000Z\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/sessions/{{sessionId}}",
+            "description": "Atualizar sessão. Todos os campos opcionais."
+          }
+        },
+        {
+          "name": "Create seats",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"seats\": [\n    { \"row\": \"A\", \"number\": \"1\" },\n    { \"row\": \"A\", \"number\": \"2\" },\n    { \"row\": \"B\", \"number\": \"1\" }\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/admin/sessions/{{sessionId}}/seats",
+            "description": "Criar assentos em lote para a sessão"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "Payment webhook (stripe)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Webhook-Signature", "value": "sha256=<hmac_hex_of_body>", "description": "HMAC-SHA256 do body com WEBHOOK_PAYMENT_SECRET" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"payment.approved\",\n  \"gatewayId\": \"pay_xxx\"\n}"
+            },
+            "url": "{{baseUrl}}/webhooks/payments/stripe",
+            "description": "Webhook do gateway de pagamento. Header X-Webhook-Signature obrigatório (HMAC do body)."
+          }
+        }
+      ]
+    }
+  ]
+}

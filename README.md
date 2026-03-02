@@ -384,6 +384,8 @@ Documentação interativa (Swagger UI) disponível em:
 
 É possível testar as rotas protegidas informando o JWT em *Authorize* (Bearer token).
 
+Coleção **Postman** em `postman/Tickets-API.postman_collection.json`. Importe no Postman; após fazer **Auth > Login**, o token é salvo automaticamente na variável `access_token` para as demais requisições. Defina `eventId`, `sessionId`, `seatId`, `ticketId` nas variáveis da coleção quando necessário.
+
 ### Smoke (health)
 
 | Método | URL | Descrição |
@@ -398,8 +400,9 @@ Documentação interativa (Swagger UI) disponível em:
 | Método | URL | Descrição |
 |--------|-----|-----------|
 | POST | `/auth/login` | Login (retorna JWT). Body: `{ "email", "password" }`. |
+| POST | `/auth/register` | Cadastro de usuário. Body: `{ "email", "password" }` (password mínimo 6 caracteres). Retorna JWT. Email já existente: **409 Conflict**. |
 
-**Resposta (200):** `{ "access_token": "jwt...", "expires_in": "1d" }`.
+**Resposta login/register (200/201):** `{ "access_token": "jwt...", "expires_in": "1d" }`.
 
 ### Usuário (JWT obrigatório)
 

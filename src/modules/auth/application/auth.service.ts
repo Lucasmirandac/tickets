@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -62,6 +62,47 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
     return this.login(user);
+  }
+
+  /**
+   * Registers a new user. Throws ConflictException if email is already in use.
+   * Address is optional (for billing). Returns login result so the user is authenticated after registration.
+   */
+  async register(
+    email: string,
+    password: string,
+    address?: {
+      street?: string;
+      number?: string;
+      complement?: string;
+      neighborhood?: string;
+      city?: string;
+      state?: string;
+      postalCode?: string;
+      country?: string;
+    },
+  ): Promise<LoginResult> {
+    const existing = await this.userRepository.findOne({ where: { email } });
+    if (existing) {
+      throw new ConflictException('Email already registered');
+    }
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await this.userRepository.save(
+      this.userRepository.create({
+        email,
+        passwordHash,
+        addressStreet: address?.street?.trim() ?? null,
+        addressNumber: address?.number?.trim() ?? null,
+        addressComplement: address?.complement?.trim() ?? null,
+        addressNeighborhood: address?.neighborhood?.trim() ?? null,
+        addressCity: address?.city?.trim() ?? null,
+        addressState: address?.state?.trim() ?? null,
+        addressPostalCode: address?.postalCode?.trim() ?? null,
+        addressCountry: address?.country?.trim() ?? null,
+      }),
+    );
+    const { passwordHash: _omit, ...userForLogin } = user;
+    return this.login(userForLogin as UserForLogin);
   }
 
   /**
